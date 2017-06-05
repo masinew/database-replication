@@ -4,13 +4,10 @@ import java.io.BufferedReader;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.sql.Connection;
 import java.util.Calendar;
-import java.util.Date;
 import java.util.List;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ibm.db2.jcc.am.sc;
 
 import masinew.bean.Schedule;
 import masinew.bean.SynchronizationData;
@@ -18,17 +15,15 @@ import masinew.bean.TimeControlling;
 import masinew.services.DB2Service;
 
 public class WorkerThread extends Thread implements Runnable {
-	private boolean isWorking = true;
-	private Connection connect;
+//	private Connection connect;
 	private IntervalWorker intervalWorker = null;
 	private ScheduleWorker scheduleWorker = null;
-	public WorkerThread(Connection connect, String threadName) {
+	public WorkerThread(String threadName) {
 		this.setName(threadName);
-		this.connect = connect;
+//		this.connect = connect;
 	}
 	
 	public void stopWorking() {
-		isWorking = false;
 		if (intervalWorker != null) {
 			intervalWorker.stopWorking();
 		}
@@ -51,7 +46,7 @@ public class WorkerThread extends Thread implements Runnable {
 		
 		if (timeControlling != null) {
 			if (timeControlling.isEnableInterval()) {
-				intervalWorker = new IntervalWorker(connect, timeControlling.getIntervalInMilliseconds());
+				intervalWorker = new IntervalWorker(timeControlling.getIntervalInMilliseconds());
 				new Thread(intervalWorker, "IntervalWorker").start();
 			}
 			
@@ -63,11 +58,9 @@ public class WorkerThread extends Thread implements Runnable {
 	}
 	
 	private class IntervalWorker implements Runnable {
-		private Connection connect;
 		private long intervalInMilliseconds;
 		private boolean isWorking = true;
-		public IntervalWorker(Connection connect, long intervalInMilliseconds) {
-			this.connect = connect;
+		public IntervalWorker(long intervalInMilliseconds) {
 			this.intervalInMilliseconds = intervalInMilliseconds;
 		}
 		
@@ -77,9 +70,9 @@ public class WorkerThread extends Thread implements Runnable {
 		
 		public void run() {
 			while (isWorking) {
-				List<SynchronizationData> synchronizationDataList = DB2Service.getSynchronizationData(connect);
+				List<SynchronizationData> synchronizationDataList = DB2Service.getSynchronizationData();
 				if (!synchronizationDataList.isEmpty()) {
-					DB2Service.doSynchronizationToAnotherServer(connect, synchronizationDataList);
+					DB2Service.doSynchronizationToAnotherServer(synchronizationDataList);
 				}
 				
 				try { Thread.sleep(intervalInMilliseconds); } catch (InterruptedException e) { }
@@ -105,9 +98,9 @@ public class WorkerThread extends Thread implements Runnable {
 				int minute = cal.get(Calendar.MINUTE);
 				for (Schedule schedule : schedules) {
 					if (hour == schedule.getHour() && minute == schedule.getMinute()) {
-						List<SynchronizationData> synchronizationDataList = DB2Service.getSynchronizationData(connect);
+						List<SynchronizationData> synchronizationDataList = DB2Service.getSynchronizationData();
 						if (!synchronizationDataList.isEmpty()) {
-							DB2Service.doSynchronizationToAnotherServer(connect, synchronizationDataList);
+							DB2Service.doSynchronizationToAnotherServer(synchronizationDataList);
 						}
 					}
 				}
@@ -119,6 +112,7 @@ public class WorkerThread extends Thread implements Runnable {
 	
 	private static String getTextFile(String fileName) {
 		try {
+			@SuppressWarnings("resource")
 			BufferedReader input = new BufferedReader(
 						new InputStreamReader(
 							new FileInputStream(fileName), "UTF-8"));

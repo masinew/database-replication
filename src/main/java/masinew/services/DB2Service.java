@@ -2,7 +2,9 @@ package masinew.services;
 
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
+import java.util.Properties;
 
 import masinew.bean.SynchronizationData;
 
@@ -12,12 +14,55 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 public class DB2Service {
-	public static void initial(Connection connect) {
-		deleteAllSyncTrigger(connect);
-		initializeTrigger(connect);
+	private static Connection connect;
+	private static Properties systemProp;
+	
+	public static void closeDatabase() {
+		try {
+			if(connect != null){
+				if (connect.isClosed()) {
+					connect.close();
+				}
+			}
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+	}
+	
+	public static void connectDatabaseAnaInitialReplicationSystem(Properties systemProp) {
+		closeDatabase();
+		connectDatabase(systemProp);
+		initialReplicationSystem();
+	}
+	
+	public static void connectDatabase(Properties systemProp) {
+		DB2Service.systemProp = systemProp;
+    	String dbUser = systemProp.getProperty("db.user");
+    	String dbPassword = systemProp.getProperty("db.password");
+    	String dbUrl = systemProp.getProperty("db.url");
+    	String dbDriver = systemProp.getProperty("db.driver");
+    	
+    	boolean dbAuthIsEncode = Boolean.parseBoolean(systemProp.getProperty("db.authen.isEncode"));
+    	if (dbAuthIsEncode) {
+    		dbUser = new String(Base64.getDecoder().decode(dbUser));
+    		dbPassword = new String(Base64.getDecoder().decode(dbPassword));
+    	}
+    	
+		try {
+			Class.forName(dbDriver);
+			connect =  DriverManager.getConnection(dbUrl, dbUser, dbPassword);
+			connect.setAutoCommit(false);
+		} catch (Exception e) {
+			System.out.println("Can not connect to the database.");
+		}
     }
 	
-	private static void deleteAllSyncTrigger(Connection connect) {
+	public static void initialReplicationSystem() {
+		deleteAllSyncTrigger();
+		initializeTrigger();
+    }
+	
+	private static void deleteAllSyncTrigger() {
 		try {
 			Statement st = connect.createStatement();
 			ResultSet syncTriggersQuery = st.executeQuery("SELECT TRIGNAME FROM SYSCAT.TRIGGERS WHERE TRIGNAME LIKE 'SYNC_%_TRIGGER'");
@@ -30,24 +75,24 @@ public class DB2Service {
 			}
 		} 
 		catch (SQLException e) {
-			e.printStackTrace();
+			reconnectDatabase();
 		}
 	}
 	
-	private static void initializeTrigger(Connection connect) {
+	private static void initializeTrigger() {
 		try {
 			Statement tableListSt = connect.createStatement();
 			ResultSet tableListQuery = tableListSt.executeQuery("SELECT TABLENAME FROM SYNC_TABLE");
 			while(tableListQuery.next()) {
 				String tableName = tableListQuery.getString("TABLENAME").toUpperCase();
-				initialInsertTrigger(connect, tableName);
+				initialInsertTrigger(tableName);
 			}
 		} catch (SQLException e) {
-			e.printStackTrace();
+			reconnectDatabase();
 		}
 	}
 	
-	private static void initialInsertTrigger(Connection connect, String tableName) {
+	private static void initialInsertTrigger(String tableName) {
 		try {
 			Statement tableStructureSt = connect.createStatement();
 			ResultSet tableFieldIdQuery = tableStructureSt.executeQuery("SELECT COLNAMES FROM SYSIBM.SYSINDEXES WHERE TBNAME = '" + tableName + "'");
@@ -76,11 +121,11 @@ public class DB2Service {
 			tableStructureSt.execute(deleteTrigger);
 			connect.commit();
 		} catch (SQLException e) {
-			e.printStackTrace();
+			reconnectDatabase();
 		}
 	}
 	
-	public static List<SynchronizationData> getSynchronizationData(Connection connect) {
+	public static List<SynchronizationData> getSynchronizationData() {
 		List<SynchronizationData> synchronizationDataList = new ArrayList<SynchronizationData>();
 		try {
 			Statement st = connect.createStatement();
@@ -102,13 +147,13 @@ public class DB2Service {
 				synchronizationDataList.add(syncData);
 			}
 		} catch (SQLException e) {
-			e.printStackTrace();
+			reconnectDatabase();
 		}
 		
 		return synchronizationDataList;
 	}
 	
-	public static void doSynchronizationToAnotherServer(Connection connect, List<SynchronizationData> synchronizationDataList) {
+	public static void doSynchronizationToAnotherServer(List<SynchronizationData> synchronizationDataList) {
 		for (SynchronizationData synchronizationData : synchronizationDataList) {
 			String dbUser = synchronizationData.getDbUser();
 	    	String dbPassword = synchronizationData.getDbPassword();
@@ -147,8 +192,15 @@ public class DB2Service {
 							+ "WHERE SYNC_INFORMATION_ID = " + synchronizationData.getSyncId();
 					st.executeUpdate(sql);
 					connect.commit();
-				} catch (SQLException e1) { }
+				} catch (SQLException e1) {
+					reconnectDatabase();
+				}
 			}
 		}
+	}
+	
+	private static void reconnectDatabase() {
+		System.out.println("Reconnect Database");
+		connectDatabase(systemProp);
 	}
 }

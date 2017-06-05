@@ -1,7 +1,7 @@
 {
 	"enableInterval": true,
-	"intervalInMilliseconds": 5000,
-	"enableSchedule": true,
+	"intervalInMilliseconds": 10,
+	"enableSchedule": false,
 	"schedules": [
 		{
 			"hour": 0,

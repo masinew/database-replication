@@ -4,16 +4,11 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
-import java.util.Base64;
 import java.util.Properties;
 
 import masinew.services.DB2Service;
 
 public class App {
-	private Connection connect = null;
 	private WorkerThread worker;
 	
     public static void main( String[] args ) {
@@ -27,12 +22,12 @@ public class App {
     		System.exit(1);
     	}
     	
-    	// Connect Database
-    	app.connectDatabase(systemProp);
-    	DB2Service.initial(app.connect);
+    	// Connect Database ** OR use connectDatabaseAnaInitialReplicationSystem(Properties) method to do above methods together.
+    	DB2Service.connectDatabase(systemProp);
+    	DB2Service.initialReplicationSystem();
     	
     	// Worker
-    	app.worker = new WorkerThread(app.connect, "MainWorker");
+    	app.worker = new WorkerThread("MainWorker");
     	app.worker.start();
     	
     	// Hook Termination
@@ -45,43 +40,7 @@ public class App {
     }
     
     private void closeDatabaseConnection() {
-    	try {
-			if(connect != null){
-				if (connect.isClosed()) {
-					connect.close();
-				}
-			}
-		} catch (SQLException e) {
-			e.printStackTrace();
-		}
-    }
-    
-    private Connection connectDatabase(Properties systemProp) {
-    	String dbUser = systemProp.getProperty("db.user");
-    	String dbPassword = systemProp.getProperty("db.password");
-    	String dbUrl = systemProp.getProperty("db.url");
-    	String dbDriver = systemProp.getProperty("db.driver");
-    	
-    	System.out.println(dbUser);
-    	System.out.println(dbPassword);
-    	System.out.println(dbUrl);
-    	System.out.println(dbDriver);
-    	boolean dbAuthIsEncode = Boolean.parseBoolean(systemProp.getProperty("db.authen.isEncode"));
-    	if (dbAuthIsEncode) {
-    		dbUser = new String(Base64.getDecoder().decode(dbUser));
-    		dbPassword = new String(Base64.getDecoder().decode(dbPassword));
-    	}
-    	
-		try {
-			Class.forName(dbDriver);
-			connect =  DriverManager.getConnection(dbUrl, dbUser, dbPassword);
-			connect.setAutoCommit(false);
-			return connect;
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		
-		return null;
+    	DB2Service.closeDatabase();
     }
     
     private Properties getPropertyFile(String propertyFileName) {
